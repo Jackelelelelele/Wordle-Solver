@@ -1,0 +1,380 @@
+import os
+import ast
+import copy
+import math
+from queue import Full
+from tokenize import Number
+import pygame
+import sys
+import random
+from operator import itemgetter
+from collections import Counter
+import time
+
+# Wordle Solver
+global WordArray
+global WordNumber
+DataArray = []
+
+# Loads in word list
+try:
+    with open('wordleanswers.txt', 'r') as file:
+        DataArray = file.read().splitlines()
+        WordArray = [list(word) for word in DataArray]
+except FileNotFoundError:
+    print('The file could not be found, the current directory is:', os.getcwd)
+FullAnswerArray = copy.deepcopy(WordArray)
+
+# Loads in full word list
+try:
+    with open('fullwordlist.txt', 'r') as file:
+        DataArray = file.read().splitlines()
+        CompleteWordArray = [list(word) for word in DataArray]
+except FileNotFoundError:
+    print('The file could not be found, the current directory is:', os.getcwd)
+
+# Loads in possible answer combinations
+try:
+    with open('wordlecombinations.txt', 'r') as file:
+        DataArray = file.read().splitlines()
+        CombinationArray = [ast.literal_eval(string) for string in DataArray]
+except FileNotFoundError:
+    print('The file could not be found, the current directory is:', os.getcwd)
+
+def CheckSubset(list1, list2):
+    counter1, counter2 = Counter(list1), Counter(list2)
+    return not counter1 - counter2
+
+def GeneratePositionArrays(Word, Combination):
+    # Set is for absent characters
+    # First and fourth list is for absent characters and their positions
+    # Second and fifth list is for present characters and their positions
+    # Third and sixth list is for correct characters and their positions
+    AbsenceList = set({})
+    PositionList = [set({}), [], [], [], [], [], []]
+    for i in range(0, 5):
+        if Combination[i] == 1:
+            AbsenceList.add(Word[i])
+            PositionList[Combination[i]].append(Word[i])
+            PositionList[Combination[i]+3].append(i)
+        else:
+            # Appends character to correct list and its position to corrosponding list
+            PositionList[Combination[i]].append(Word[i])
+            PositionList[Combination[i]+3].append(i)
+    # Removes grey characters which are present in word
+    PositionList[0] = set(AbsenceList.difference(set(PositionList[2])).intersection(AbsenceList.difference(set(PositionList[3]))))
+    return PositionList
+
+def InArray(Word, PositionList):
+    # Checks absence set
+    if set(Word).intersection(PositionList[0]):
+        return False
+    # Checks absence list
+    for i in range(0,len(PositionList[1])):
+        if PositionList[1][i] == Word[PositionList[4][i]]:
+            return False
+    # Checks presence list
+    for i in range(0,len(PositionList[2])):
+        if PositionList[2][i] not in Word:
+            return False
+        elif PositionList[2][i] == Word[PositionList[5][i]]:
+            return False
+    # Checks position list
+    for i in range(0,len(PositionList[3])):
+        if PositionList[3][i] != Word[PositionList[6][i]]:
+            return False
+    # Checks that number of correct characters in Guess Word is not lower than that of the Target Word
+    AllPresentCharacters = PositionList[2] + PositionList[3]
+    if not CheckSubset(AllPresentCharacters, Word):
+        return False
+    if len(Word) != len(set(Word)):
+        # Deals with the edge case where the same character produces a grey and yellow output
+        PresentRepeatedCharacters = set(PositionList[1]).intersection(set(PositionList[2]))
+        TargetWordCharacters = []
+        for i in range(0, len(PositionList[2])):
+            if PositionList[2][i] in PresentRepeatedCharacters:
+                TargetWordCharacters.append(PositionList[2][i])
+        GuessWordCharacters = []
+        for i in range(0, len(Word)):
+            if Word[i] in TargetWordCharacters:
+                GuessWordCharacters.append(Word[i])
+        if Counter(TargetWordCharacters) != Counter(GuessWordCharacters):
+            return False
+        # Deals with the edge case where the same character produces a grey and green output
+        CorrectRepeatedCharacters = set(PositionList[1]).intersection(set(PositionList[3]))
+        TargetWordCharacters = []
+        for i in range(0, len(PositionList[3])):
+            if PositionList[3][i] in CorrectRepeatedCharacters:
+                TargetWordCharacters.append(PositionList[3][i])
+        GuessWordCharacters = []
+        for i in range(0, len(Word)):
+            if Word[i] in TargetWordCharacters:
+                GuessWordCharacters.append(Word[i])
+        if Counter(TargetWordCharacters) != Counter(GuessWordCharacters):
+            return False
+    return True
+
+def RemoveWords(PositionList, WordArray):
+    i = 0
+    ArrayLength = len(WordArray)
+    while i < ArrayLength:
+        if InArray(WordArray[i], PositionList) == False:
+            WordArray.pop(i)
+            ArrayLength -= 1
+        else:
+            i += 1
+
+def CalculateExpectedEntropy(Word, WordArray, CombinationArray):
+    TotalWords = 0
+    ExpectedEntropy = 0
+    TotalProbability = 0
+    LengthOfWordArray = len(WordArray)
+    WordLists = []
+    for i in range(0, len(CombinationArray)):
+        NewArray = copy.deepcopy(WordArray)
+        RemoveWords(GeneratePositionArrays(Word, CombinationArray[i]), NewArray)
+        if NewArray not in WordLists:
+            WordLists.append(NewArray)
+            Probability = len(NewArray)/LengthOfWordArray
+            TotalWords += len(NewArray)
+            if Probability != 0:
+                Entropy = Probability*(math.log2(1/Probability))
+            else:
+                Entropy = 0
+            TotalProbability += Probability
+            ExpectedEntropy += Entropy
+    AverageExpectedEntropy = ExpectedEntropy/TotalProbability
+    return AverageExpectedEntropy
+
+def CreateExpectedEntropyArray(WordArray, CombinationArray):
+    WordEntropyArray = []
+    for i in range(0, len(WordArray)):
+        WordEntropyArray.append([''.join(WordArray[i]), CalculateExpectedEntropy(WordArray[i], WordArray, CombinationArray)])
+        WordEntropyArray = sorted(WordEntropyArray, key=itemgetter(1), reverse=True)
+        print(i)
+    return WordEntropyArray
+
+def CreateTopTenArray(WordEntropyArray):
+    if len(WordEntropyArray) > 10:
+        TopTenArray = [WordEntropyArray[i] for i in range(0, 10)]
+    else:
+        TopTenArray = [WordEntropyArray[i] for i in range(0, len(WordEntropyArray))]
+    return TopTenArray
+
+# Main Game
+def GenerateTargetWord(WordArray):
+    TargetWord = ''.join(WordArray[random.randint(0, len(WordArray)-1)])
+    return TargetWord
+
+# Finds all positions of a given character in a word
+def FindCharacterPositions(Word, Character):
+    PositionArray = []
+    Position = Word.find(Character)
+    while Position != -1:
+        PositionArray.append(Position)
+        Position = Word.find(Character, Position + 1)
+    return PositionArray
+
+def CreateCombination(GuessWord, TargetWord):
+    Combination = [1 for i in range(0, 5)]
+    GuessWordArray = [char for char in GuessWord]
+    TargetWordArray = [char for char in TargetWord]
+    CorrectPositions = set()
+
+    for i in range(0, len(TargetWordArray)):
+        if GuessWordArray[i] == TargetWordArray[i]:
+            Combination[i] = "3"
+            CorrectPositions.add(i)
+    
+    for i in range(0, len(GuessWordArray)):
+        if GuessWordArray[i] in TargetWord and Combination[i] != "3":
+            PositionArray = FindCharacterPositions(TargetWord, GuessWordArray[i])
+            for Position in PositionArray:
+                if Position not in CorrectPositions:
+                    Combination[i] = "2"
+                    CorrectPositions.add(Position)
+                    break
+    
+    Combination = ''.join([str(int) for int in Combination])
+    return Combination
+
+def TakeGuesses():
+    TotalEntropyGain = 0
+    while True:
+        Guesses = 0
+        Word = input('Input Word')
+        Combination = input('Input Combination')
+        Length = len(WordArray)
+        RemoveWords(GeneratePositionArrays(list(Word), list(map(int, Combination))), WordArray)
+        NewLength = len(WordArray)
+        EntropyGain = math.log2(Length/NewLength)
+        TotalEntropyGain += EntropyGain
+        print('Entropy Gained: ',EntropyGain)
+        print('Total Entropy: ', TotalEntropyGain)
+        ExpectedEntropyArray = CreateExpectedEntropyArray(WordArray, CombinationArray)
+        print(CreateTopTenArray(ExpectedEntropyArray))
+        print(ExpectedEntropyArray)
+        if Guesses == 6 or len(ExpectedEntropyArray) == 1:
+            break
+
+# GUI for Wordle Game and Solver
+pygame.init()
+
+# Screen
+White = '#FFFFFF'
+Black = '#000000'
+Grey = '#767C81'
+Yellow = '#CAB456'
+Green = '#69AB61'
+Blue = '#1EB8C8'
+WIDTH = 1200
+HEIGHT = 1000
+Screen = pygame.display.set_mode([WIDTH, HEIGHT])
+pygame.display.set_caption('Wordle Solver')
+
+NumberOfGuesses = 0
+LetterPosition = 0
+TargetWord = GenerateTargetWord(WordArray)
+Board = [[' ', ' ', ' ', ' ', ' '], 
+        [' ', ' ', ' ', ' ', ' '], 
+        [' ', ' ', ' ', ' ', ' '], 
+        [' ', ' ', ' ', ' ', ' '], 
+        [' ', ' ', ' ', ' ', ' '], 
+        [' ', ' ', ' ', ' ', ' '],
+        [' ', ' ', ' ', ' ', ' ']]
+
+ColourReference = {'1': Grey, '2': Yellow, '3': Green}
+ColourBoard = [[' ', ' ', ' ', ' ', ' '], 
+        [' ', ' ', ' ', ' ', ' '], 
+        [' ', ' ', ' ', ' ', ' '], 
+        [' ', ' ', ' ', ' ', ' '], 
+        [' ', ' ', ' ', ' ', ' '], 
+        [' ', ' ', ' ', ' ', ' '],
+        [' ', ' ', ' ', ' ', ' ']]
+
+BestGuessHeader = 'Word'
+BestGuessesArray = ['soare', 'roate', 'raise', 'raile', 'reast', 'slate', 'crate', 'salet', 'irate', 'trace']
+ExpectedEntropyHeader = 'E(Entropy)'
+ExpectedEntropyArray = [5.89, 5.88, 5.88, 5.87, 5.87, 5.86, 5.83, 5.83, 5.83, 5.83]
+
+TotalEntropyGainHeader = 'Total Entropy Gain:'
+TotalEntropyGain = 0
+EntropyGainHeader = 'Entropy Gain'
+EntropyGainArray = [' ', ' ', ' ', ' ', ' ', ' ']
+
+fps = 60
+timer = pygame.time.Clock()
+MainFont = pygame.font.Font('freesansbold.ttf', 56)
+HeaderFont = pygame.font.Font('freesansbold.ttf', 32)
+SmallFont = pygame.font.Font('freesansbold.ttf', 24)
+
+def DrawBoard():
+    global NumberOfGuesses
+    global Board
+    # Displays best guesses
+    Screen.blit(HeaderFont.render(BestGuessHeader, True, White), [890, 32])
+    Screen.blit(HeaderFont.render(ExpectedEntropyHeader, True, Blue), [990, 32])
+    Screen.blit(HeaderFont.render('Press Enter to submit guess', True, White), [46, 720])
+    for row in range(0, len(BestGuessesArray)):
+        BestGuess = SmallFont.render(BestGuessesArray[row].upper(), True, White)
+        Screen.blit(BestGuess, [890, row * 40 + 80])
+        ExpectedEntropyValue = SmallFont.render(str(round(ExpectedEntropyArray[row], 2)), True, Blue)
+        Screen.blit(ExpectedEntropyValue, [1044, row * 40 + 80])
+    # Headers for entropy gain
+    Screen.blit(HeaderFont.render(EntropyGainHeader, True, Blue), [148, 32])
+    Screen.blit(HeaderFont.render(TotalEntropyGainHeader, True, Blue), [48, 668])
+    Screen.blit(HeaderFont.render(str(round(TotalEntropyGain, 2)), True, Blue), [380, 668])
+    # Displays boxes and characters
+    for row in range(0, 6):
+        for column in range(0, 5):
+            pygame.draw.rect(Screen, White, [column * 90 + 375, row * 90 + 86, 84, 84], 2)
+            if ColourBoard[row][column] != ' ':
+                pygame.draw.rect(Screen, ColourReference[ColourBoard[row][column]], [column * 90 + 377, row * 90 + 88, 80, 80], 0)
+            PieceOfText = MainFont.render(Board[row][column].upper(), True, White)
+            Screen.blit(PieceOfText, [column * 90 + 397, row * 90 + 104])
+        
+        # Displays entropy gained from each guess
+        EntropyGainText = MainFont.render(EntropyGainArray[row], True, Blue)
+        Screen.blit(EntropyGainText, [204, row * 90 + 104])
+
+# Takes characters from Board and generates a string corrosponding to the Guess Word
+def GetWord(Board, NumberOfGuesses):
+    WordString = ''.join(Board[NumberOfGuesses])
+    return WordString
+
+GameOver = False
+Running = True
+while Running:
+    timer.tick(fps)
+    Screen.fill(Black)
+    DrawBoard()
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            Running = False
+        if event.type == pygame.KEYDOWN and not GameOver:
+            # Checks if Backspace key is pressed and deletes letter if word is not empty
+            if event.key == pygame.K_BACKSPACE and LetterPosition != 0:
+                LetterPosition -= 1
+                Board[NumberOfGuesses][LetterPosition] = ' '
+            # Checks if Enter key is pressed and checks if word is in CompleteWordArray
+            if event.key == pygame.K_RETURN and LetterPosition == 5 and not GameOver:
+                if list(GetWord(Board, NumberOfGuesses)) in CompleteWordArray:
+                    Combination = CreateCombination(GetWord(Board, NumberOfGuesses), TargetWord)
+                    # Ends game if word is correct
+                    if Combination == '33333' or NumberOfGuesses == 5:
+                        GameOver = True
+                    ColourBoard[NumberOfGuesses] = list(Combination)
+                    # Calculates Entropy Gain
+                    Length = len(WordArray)
+                    RemoveWords(GeneratePositionArrays(Board[NumberOfGuesses], list(map(int, Combination))), WordArray)
+                    NewLength = len(WordArray)
+                    EntropyGain = math.log2(Length/NewLength)
+                    EntropyGainArray[NumberOfGuesses] = str(round(EntropyGain, 2))
+                    TotalEntropyGain += EntropyGain
+                    # Creates TopGuessesArray
+                    TopGuessesArray = CreateTopTenArray(CreateExpectedEntropyArray(WordArray, CombinationArray))
+                    BestGuessesArray = []
+                    ExpectedEntropyArray = []
+                    for i in range(0, len(TopGuessesArray)):
+                        BestGuessesArray.append(TopGuessesArray[i][0])
+                        ExpectedEntropyArray.append(TopGuessesArray[i][1])
+                    # Increments line
+                    NumberOfGuesses += 1
+                    LetterPosition = 0
+        if event.type == pygame.TEXTINPUT and not GameOver:
+            LetterEntry = event.__getattribute__('text')
+            if LetterPosition < 5:
+                Board[NumberOfGuesses][LetterPosition] = LetterEntry
+                LetterPosition += 1
+    
+    # Checks if game is over and restarts it if a key is pressed
+    if GameOver == True:
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_BACKSPACE:
+                NumberOfGuesses = 0
+                LetterPosition = 0
+                TotalEntropyGain = 0
+                TargetWord = GenerateTargetWord(FullAnswerArray)
+                WordArray = copy.deepcopy(FullAnswerArray)
+                BestGuessesArray = []
+                ExpectedEntropyArray = []
+                EntropyGainArray = [' ', ' ', ' ', ' ', ' ', ' ']
+                Board = [[' ', ' ', ' ', ' ', ' '], 
+                        [' ', ' ', ' ', ' ', ' '], 
+                        [' ', ' ', ' ', ' ', ' '], 
+                        [' ', ' ', ' ', ' ', ' '], 
+                        [' ', ' ', ' ', ' ', ' '], 
+                        [' ', ' ', ' ', ' ', ' '],
+                        [' ', ' ', ' ', ' ', ' ']]
+                ColourBoard = [[' ', ' ', ' ', ' ', ' '], 
+                              [' ', ' ', ' ', ' ', ' '], 
+                              [' ', ' ', ' ', ' ', ' '], 
+                              [' ', ' ', ' ', ' ', ' '], 
+                              [' ', ' ', ' ', ' ', ' '], 
+                              [' ', ' ', ' ', ' ', ' '],
+                              [' ', ' ', ' ', ' ', ' ']]
+                GameOver = False
+    
+    pygame.display.flip()
+pygame.quit()
