@@ -30,5 +30,7 @@ Type in a 5 letter word and hit **Enter** to input a guess, use **Backspace** to
 The solver utilizes several datasets to function accurately:
 
 **fullwordlist.txt:** Contains all possible words that can be inputted as guesses.
+
 **wordleanswers.txt:** A compilation of all potential answers, matching the list used by The New York Times.
+
 **wordlecombinations.txt:** Additional data used by the solver for its computations.
