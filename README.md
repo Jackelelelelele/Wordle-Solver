@@ -16,7 +16,7 @@ A sophisticated Wordle game solver grounded in Information Theory. Using an adva
 
 ```bash
 pip install pygame
-```bash
+```
 
 If you're new to pygame, you can read more about it and its installation [here](https://www.pygame.org/wiki/GettingStarted).
 
