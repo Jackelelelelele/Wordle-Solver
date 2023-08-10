@@ -5,7 +5,9 @@ A sophisticated Wordle game solver grounded in Information Theory. Using an adva
 ## Features
 
 **Information Theory-Based Algorithm:** Improves guess accuracy by computing the expected entropy of each word.
+
 **Interactive GUI:** Displays the top 10 word predictions dynamically.
+
 **Performance:** Achieves an average score of ~3.44.
 
 ## Installation
